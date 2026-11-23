@@ -5,6 +5,7 @@ import Cropper from "react-easy-crop";
 import { useTranslation } from "react-i18next";
 import type { Area, Point } from "react-easy-crop";
 import { useAuthStore } from "@/store";
+import { visibleEmail } from "@/lib/username-auth";
 import { useProfile, useUploadAvatar } from "@/hooks";
 import { createImageUrl, cropImage } from "@/utils";
 
@@ -231,7 +232,7 @@ export const ProfileAvatar = () => {
           </Text>
 
           <Text as="p" className="truncate text-xs text-muted md:text-base">
-            {user?.email}
+            {visibleEmail(user?.email)}
           </Text>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuthStore, useSidebarStore, useSyncStore } from "@/store";
+import { visibleEmail } from "@/lib/username-auth";
 import { cn } from "@stellar-ui-kit/shared";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
@@ -74,7 +75,7 @@ export function Sidebar() {
   const displayName =
     profile?.username ?? user?.user_metadata?.full_name ?? "User";
 
-  const email = user?.email ?? "";
+  const email = visibleEmail(user?.email);
 
   const initials = displayName
     .split(" ")

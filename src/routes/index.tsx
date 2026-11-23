@@ -1,6 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { WelcomePage } from "@/pages";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
+// Single-user instance: skip the marketing page. Logged-in users are sent
+// on to /dashboard by useAuthRedirect.
 export const Route = createFileRoute("/")({
-  component: WelcomePage,
+  beforeLoad: () => {
+    throw redirect({ to: "/auth/login", replace: true });
+  },
 });

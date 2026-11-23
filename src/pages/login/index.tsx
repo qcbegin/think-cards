@@ -1,18 +1,17 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import type { AuthError } from "@supabase/supabase-js";
-import { SocialAuthButtons } from "@/components";
 import { useDocumentHead } from "@/hooks";
-import { useOAuthSignIn, useSignIn } from "@/hooks/useAuth";
-import { hasMinLength, isNotEmpty, isValidEmail } from "@/utils";
+import { useSignIn } from "@/hooks/useAuth";
+import { isValidUsername, usernameToEmail } from "@/lib/username-auth";
+import { hasMinLength, isNotEmpty } from "@/utils";
 
 import {
   Button,
   Card,
   InputPassword,
   InputText,
-  Separator,
   Spinner,
   Text,
 } from "@stellar-ui-kit/web";
@@ -26,6 +25,8 @@ const getAuthErrorMessage = (error: AuthError, t: (key: string) => string) => {
   return t("authErrorGeneric");
 };
 
+// Single-user instance: username + password only. No sign-up, password
+// reset or third-party providers (see src/lib/username-auth.ts).
 export const LoginPage = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -33,20 +34,18 @@ export const LoginPage = () => {
   useDocumentHead({ title: t("loginTitle") });
 
   const signIn = useSignIn();
-  const oAuthSignIn = useOAuthSignIn();
 
-  const [form, setForm] = useState({ email: "", password: "" });
-  const [errors, setErrors] = useState({ email: "", password: "" });
+  const [form, setForm] = useState({ username: "", password: "" });
+  const [errors, setErrors] = useState({ username: "", password: "" });
   const [authError, setAuthError] = useState("");
-  const [oAuthProvider, setOAuthProvider] = useState<string | null>(null);
 
   const validateForm = (): boolean => {
-    const next = { email: "", password: "" };
+    const next = { username: "", password: "" };
 
-    if (!isNotEmpty(form.email)) {
-      next.email = t("loginValidationEmailRequired");
-    } else if (!isValidEmail(form.email)) {
-      next.email = t("loginValidationEmailInvalid");
+    if (!isNotEmpty(form.username)) {
+      next.username = t("loginValidationUsernameRequired");
+    } else if (!isValidUsername(form.username)) {
+      next.username = t("loginValidationUsernameInvalid");
     }
 
     if (!isNotEmpty(form.password)) {
@@ -58,13 +57,13 @@ export const LoginPage = () => {
     }
 
     setErrors(next);
-    return !next.email && !next.password;
+    return !next.username && !next.password;
   };
 
   const handleSubmit = () => {
     if (!validateForm()) return;
     signIn.mutate(
-      { email: form.email, password: form.password },
+      { email: usernameToEmail(form.username), password: form.password },
       {
         onSuccess: () => navigate({ to: "/dashboard" }),
         onError: (error) =>
@@ -73,26 +72,6 @@ export const LoginPage = () => {
     );
   };
 
-  const handleOAuth = async (provider: "google" | "github" | "x") => {
-    if (oAuthProvider !== null) return;
-    setAuthError("");
-    setOAuthProvider(provider);
-    try {
-      await oAuthSignIn(provider);
-    } catch {
-      setAuthError(t("authErrorGeneric"));
-      setOAuthProvider(null);
-    }
-  };
-
-  useEffect(() => {
-    const reset = () => {
-      if (document.visibilityState === "visible") setOAuthProvider(null);
-    };
-    document.addEventListener("visibilitychange", reset);
-    return () => document.removeEventListener("visibilitychange", reset);
-  }, []);
-
   return (
     <div className="flex min-h-screen items-center justify-center px-6 py-12">
       <Card className="w-full max-w-md p-6 md:p-8">
@@ -100,7 +79,13 @@ export const LoginPage = () => {
           <Text as="h2">{t("loginTitle")}</Text>
         </div>
 
-        <div className="space-y-5">
+        <form
+          className="space-y-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleSubmit();
+          }}
+        >
           {authError && (
             <div className="rounded-md bg-error-soft px-4 py-3">
               <Text as="p" className="text-sm text-error-text">
@@ -110,16 +95,16 @@ export const LoginPage = () => {
           )}
 
           <InputText
-            type="email"
-            label={t("loginEmailLabel")}
-            placeholder={t("loginEmailPlaceholder")}
-            value={form.email}
+            type="text"
+            label={t("loginUsernameLabel")}
+            placeholder={t("loginUsernamePlaceholder")}
+            value={form.username}
             onChange={(value) => {
-              setForm((prev) => ({ ...prev, email: value }));
-              setErrors((prev) => ({ ...prev, email: "" }));
+              setForm((prev) => ({ ...prev, username: value }));
+              setErrors((prev) => ({ ...prev, username: "" }));
               setAuthError("");
             }}
-            error={errors.email || undefined}
+            error={errors.username || undefined}
             containerClassName="w-full max-w-full"
           />
 
@@ -136,55 +121,11 @@ export const LoginPage = () => {
             containerClassName="w-full max-w-full"
           />
 
-          <div className="flex items-center justify-end">
-            <Link
-              to="/auth/forgot-password"
-              className="text-sm font-medium text-muted hover:underline"
-            >
-              {t("loginForgotPassword")}
-            </Link>
-          </div>
-
-          <Button
-            type="button"
-            onClick={handleSubmit}
-            disabled={signIn.isPending || oAuthProvider !== null}
-            className="w-full"
-          >
+          <Button type="submit" disabled={signIn.isPending} className="w-full">
             {signIn.isPending && <Spinner className="size-4 text-white" />}
             {t("loginSubmitButton")}
           </Button>
-        </div>
-
-        <div className="mt-3">
-          <div className="relative mb-6">
-            <Separator />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Text
-                as="span"
-                className="bg-surface px-2 text-xs uppercase text-muted"
-              >
-                {t("loginOrSignInWith")}
-              </Text>
-            </div>
-          </div>
-
-          <SocialAuthButtons
-            handlers={{
-              google: () => handleOAuth("google"),
-              github: () => handleOAuth("github"),
-              x: () => handleOAuth("x"),
-            }}
-            loadingProvider={oAuthProvider}
-          />
-        </div>
-
-        <Link
-          to="/auth/sign-up"
-          className="text-center text-sm text-muted hover:underline"
-        >
-          {t("loginSignUpLink")}!
-        </Link>
+        </form>
       </Card>
     </div>
   );

@@ -34,11 +34,6 @@ export const Header = () => {
             </Button>
           </Link>
 
-          <Link to="/auth/sign-up">
-            <Button type="button" className="h-7 rounded-lg font-normal">
-              {t("headerSignUp")}
-            </Button>
-          </Link>
         </nav>
       </div>
     </header>
