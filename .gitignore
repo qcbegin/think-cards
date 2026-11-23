@@ -30,3 +30,10 @@ coverage
 *.njsproj
 *.sln
 *.sw?
+
+# Supabase CLI local state
+supabase/.temp/
+supabase/.branches/
+
+# Private planning notes (local only)
+.notes/
