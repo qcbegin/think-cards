@@ -10,6 +10,7 @@ import type { CardType } from "@/lib/db";
 import { AI_LINKS, PROMPTS } from "./prompts";
 import { bulkAddCards } from "./bulk-add";
 import { ImportAnki } from "./components/import-anki";
+import { ConnectorGuide } from "./components/connector-guide";
 
 import {
   Button,
@@ -76,7 +77,7 @@ export const GenerateCardsPage = () => {
   const [importing, setImporting] = useState(false);
   const [deckModalOpen, setDeckModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [outerTab, setOuterTab] = useState("ai");
+  const [outerTab, setOuterTab] = useState("connector");
 
   const parsed = json.trim() ? parseCards(json, cardType) : null;
   const isInvalid = json.trim().length > 0 && parsed === null;
@@ -141,9 +142,16 @@ export const GenerateCardsPage = () => {
 
       <Tabs value={outerTab} onValueChange={setOuterTab}>
         <TabsList className="mb-6">
+          <TabsTrigger value="connector">
+            {t("generateCardsTabConnector")}
+          </TabsTrigger>
           <TabsTrigger value="ai">{t("generateCardsTabAi")}</TabsTrigger>
           <TabsTrigger value="anki">{t("generateCardsTabAnki")}</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="connector">
+          <ConnectorGuide />
+        </TabsContent>
 
         <TabsContent value="ai">
           <div className="flex flex-col gap-10">
