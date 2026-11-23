@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 
 import {
   formatTime,
+  formatDateTime,
   formatStudyTime,
   formatTimePerCard,
   truncate,
@@ -60,5 +61,21 @@ describe("truncate", () => {
 
   it("trims surrounding whitespace before comparing", () => {
     expect(truncate("  hi  ", 10)).toBe("hi");
+  });
+});
+
+describe("formatDateTime", () => {
+  it("returns a dash for empty or invalid input", () => {
+    expect(formatDateTime(null, "en-US")).toBe("—");
+    expect(formatDateTime("not a date", "en-US")).toBe("—");
+  });
+
+  it("formats date and time for the given locale", () => {
+    const iso = "2026-11-23T17:25:34.164242+00:00";
+
+    expect(formatDateTime(iso, "en-US")).toMatch(/2026/);
+    expect(formatDateTime(iso, "en-US")).toMatch(/\d{1,2}:\d{2}/);
+    expect(formatDateTime(iso, "zh-CN")).toMatch(/2026/);
+    expect(formatDateTime(iso, "zh-CN")).toMatch(/11月/);
   });
 });

@@ -38,3 +38,16 @@ export const formatStudyTime = (ms: number): string => {
 
   return `${hours}h ${minutes}m`;
 };
+
+// "Nov 23, 2026, 5:25 PM" / "2026年11月23日 17:25" depending on locale.
+export const formatDateTime = (iso: string | null, locale: string): string => {
+  if (!iso) return "—";
+
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+};

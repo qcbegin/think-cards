@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { cn } from "@stellar-ui-kit/shared";
 import { Play, Plus, SlidersHorizontal } from "lucide-react";
-import type { CardStatus } from "@/hooks/useCardsWithState";
+import type { CardSort, CardStatus } from "@/hooks/useCardsWithState";
 import type { IDeck } from "@/lib/db";
 
 import {
@@ -30,6 +30,7 @@ type CardPanelToolbarProps = {
   activeFilterCount: number;
   typeFilter: CardTypeFilter;
   statusFilter: StatusFilter;
+  sort: CardSort;
   search: string;
   movingTo: string;
   allDecks: IDeck[];
@@ -40,6 +41,7 @@ type CardPanelToolbarProps = {
   onOpenFilterDrawer: () => void;
   onTypeFilterChange: (v: CardTypeFilter) => void;
   onStatusFilterChange: (v: StatusFilter) => void;
+  onSortChange: (v: CardSort) => void;
   onSearchChange: (v: string) => void;
   onMovingToChange: (v: string) => void;
   onToggleAll: () => void;
@@ -58,6 +60,7 @@ export const CardPanelToolbar = ({
   activeFilterCount,
   typeFilter,
   statusFilter,
+  sort,
   search,
   movingTo,
   allDecks,
@@ -68,6 +71,7 @@ export const CardPanelToolbar = ({
   onOpenFilterDrawer,
   onTypeFilterChange,
   onStatusFilterChange,
+  onSortChange,
   onSearchChange,
   onMovingToChange,
   onToggleAll,
@@ -197,6 +201,22 @@ export const CardPanelToolbar = ({
               <SelectItem value="review">
                 {t("cardPanelStatusReview")}
               </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="min-w-[7.5rem] flex-1">
+          <Select
+            value={sort}
+            onValueChange={(v) => onSortChange(v as CardSort)}
+          >
+            <SelectTrigger className="h-8 w-full text-xs">
+              <SelectValue />
+            </SelectTrigger>
+
+            <SelectContent>
+              <SelectItem value="newest">{t("cardPanelSortNewest")}</SelectItem>
+              <SelectItem value="oldest">{t("cardPanelSortOldest")}</SelectItem>
             </SelectContent>
           </Select>
         </div>

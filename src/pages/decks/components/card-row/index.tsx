@@ -2,7 +2,7 @@ import DOMPurify from "dompurify";
 import { useTranslation } from "react-i18next";
 import { Pencil, Trash2 } from "lucide-react";
 import type { CardWithState, CardStatus } from "@/hooks/useCardsWithState";
-import { truncate } from "@/utils/format";
+import { formatDateTime, truncate } from "@/utils/format";
 
 import {
   Checkbox,
@@ -43,7 +43,7 @@ export const CardRow = ({
   onEdit,
   onDelete,
 }: CardRowProps) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const front = stripHtml(card.front);
 
   const formatDue = (due: string | null): string => {
@@ -93,6 +93,16 @@ export const CardRow = ({
           <span>
             {t("cardRowLabelNextReview")}:{" "}
             <span className="text-foreground">{formatDue(card.due)}</span>
+          </span>
+
+          <span>
+            {t("cardRowLabelAdded")}:{" "}
+            <span className="text-foreground">
+              {formatDateTime(
+                card.created_at,
+                i18n.language === "zh" ? "zh-CN" : "en-US",
+              )}
+            </span>
           </span>
         </div>
       </div>

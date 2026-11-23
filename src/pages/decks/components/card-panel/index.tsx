@@ -2,7 +2,11 @@ import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigateToStudy } from "@/hooks";
 import { BookOpen, Layers, Plus } from "lucide-react";
-import type { CardStatus, CardWithState } from "@/hooks/useCardsWithState";
+import type {
+  CardSort,
+  CardStatus,
+  CardWithState,
+} from "@/hooks/useCardsWithState";
 import { CARDS_PAGE_SIZE } from "@/hooks/useCardsWithState";
 import { db } from "@/lib/db";
 import { Button, Skeleton, Spinner, Text } from "@stellar-ui-kit/web";
@@ -122,12 +126,13 @@ export const CardPanel = ({
   const { data: allDecks = [], isLoading: decksLoading } = useDecksList();
 
   const [limit, setLimit] = useState(CARDS_PAGE_SIZE);
+  const [sort, setSort] = useState<CardSort>("newest");
   const {
     data: cards = [],
     isLoading,
     hasMore,
     total,
-  } = useCardsWithState(deckId, limit);
+  } = useCardsWithState(deckId, limit, sort);
 
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<CardTypeFilter>("all");
@@ -304,6 +309,7 @@ export const CardPanel = ({
             activeFilterCount={activeFilterCount}
             typeFilter={typeFilter}
             statusFilter={statusFilter}
+            sort={sort}
             search={search}
             movingTo={movingTo}
             allDecks={allDecks}
@@ -314,6 +320,7 @@ export const CardPanel = ({
             onOpenFilterDrawer={() => setFilterDrawerOpen(true)}
             onTypeFilterChange={setTypeFilter}
             onStatusFilterChange={setStatusFilter}
+            onSortChange={setSort}
             onSearchChange={setSearch}
             onMovingToChange={setMovingTo}
             onToggleAll={toggleAll}
@@ -378,10 +385,12 @@ export const CardPanel = ({
         onOpenChange={setFilterDrawerOpen}
         typeFilter={typeFilter}
         statusFilter={statusFilter}
+        sort={sort}
         search={search}
         hasActiveFilters={hasActiveFilters}
         onTypeFilterChange={setTypeFilter}
         onStatusFilterChange={setStatusFilter}
+        onSortChange={setSort}
         onSearchChange={setSearch}
         onClearFilters={() => {
           setTypeFilter("all");

@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import type { CardStatus } from "@/hooks/useCardsWithState";
+import type { CardSort, CardStatus } from "@/hooks/useCardsWithState";
 
 import {
   Button,
@@ -23,10 +23,12 @@ type FilterDrawerProps = {
   onOpenChange: (open: boolean) => void;
   typeFilter: CardTypeFilter;
   statusFilter: StatusFilter;
+  sort: CardSort;
   search: string;
   hasActiveFilters: boolean;
   onTypeFilterChange: (v: CardTypeFilter) => void;
   onStatusFilterChange: (v: StatusFilter) => void;
+  onSortChange: (v: CardSort) => void;
   onSearchChange: (v: string) => void;
   onClearFilters: () => void;
 };
@@ -36,10 +38,12 @@ export const FilterDrawer = ({
   onOpenChange,
   typeFilter,
   statusFilter,
+  sort,
   search,
   hasActiveFilters,
   onTypeFilterChange,
   onStatusFilterChange,
+  onSortChange,
   onSearchChange,
   onClearFilters,
 }: FilterDrawerProps) => {
@@ -100,6 +104,30 @@ export const FilterDrawer = ({
                 </SelectItem>
                 <SelectItem value="review">
                   {t("cardPanelStatusReview")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-muted">
+              {t("cardPanelFilterSort")}
+            </span>
+
+            <Select
+              value={sort}
+              onValueChange={(v) => onSortChange(v as CardSort)}
+            >
+              <SelectTrigger className="h-9 w-full text-sm">
+                <SelectValue />
+              </SelectTrigger>
+
+              <SelectContent>
+                <SelectItem value="newest">
+                  {t("cardPanelSortNewest")}
+                </SelectItem>
+                <SelectItem value="oldest">
+                  {t("cardPanelSortOldest")}
                 </SelectItem>
               </SelectContent>
             </Select>

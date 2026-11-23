@@ -11,12 +11,38 @@ export const CARDS_PAGE_SIZE = 100;
 
 export type CardStatus = "new" | "learning" | "review";
 
+export type CardSort = "newest" | "oldest";
+
+// Sort by creation time; ties (e.g. a batch saved in one call) fall back to
+// id so the order is stable between renders.
+export const sortCardsByCreated = <T extends { created_at: string; id: string }>(
+  cards: T[],
+  sort: CardSort,
+): T[] => {
+  const dir = sort === "newest" ? -1 : 1;
+
+  // Compare as instants: rows created here use "...Z", rows pulled from
+  // Postgres use "...+00:00", so a string comparison would misorder them.
+  const time = (iso: string): number => {
+    const ms = Date.parse(iso);
+    return Number.isNaN(ms) ? 0 : ms;
+  };
+
+  return [...cards].sort((a, b) => {
+    const diff = time(a.created_at) - time(b.created_at);
+    if (diff !== 0) return diff * dir;
+
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+};
+
 export type CardWithState = {
   id: string;
   deck_id: string;
   type: CardType;
   front: string;
   back: string;
+  created_at: string;
   updated_at: string;
   status: CardStatus;
   due: string | null;
@@ -32,6 +58,7 @@ function toStatus(state: number): CardStatus {
 export const useCardsWithState = (
   deckId: string | null,
   limit = CARDS_PAGE_SIZE,
+  sort: CardSort = "newest",
 ) => {
   const total = useLiveQuery(async () => {
     if (!deckId) return 0;
@@ -46,12 +73,15 @@ export const useCardsWithState = (
   const result = useLiveQuery(async () => {
     if (!deckId) return [];
 
-    const cards = await db.cards
+    // Sort before limiting: the page must be the newest (or oldest) cards of
+    // the whole deck, not a sorted slice of whatever happened to load first.
+    const all = await db.cards
       .where("deck_id")
       .equals(deckId)
       .filter((c) => c.deleted_at === null)
-      .limit(limit)
       .toArray();
+
+    const cards = sortCardsByCreated(all, sort).slice(0, limit);
 
     const cardIds = cards.map((c) => c.id);
 
@@ -70,13 +100,14 @@ export const useCardsWithState = (
         type: c.type,
         front: c.front,
         back: c.back,
+        created_at: c.created_at,
         updated_at: c.updated_at,
         status: s ? toStatus(s.state) : ("new" as CardStatus),
         due: s?.due ?? null,
         state: s?.state ?? State.New,
       };
     });
-  }, [deckId, limit]);
+  }, [deckId, limit, sort]);
 
   return {
     data: result ?? [],
