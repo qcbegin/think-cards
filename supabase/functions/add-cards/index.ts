@@ -5,12 +5,12 @@ import { handleMcpPayload } from "./mcp.ts";
 // Deploy with --no-verify-jwt: callers authenticate with their own secrets,
 // not a Supabase JWT.
 //
-//   POST /add-cards                 REST. Authorization: Bearer ADD_CARDS_TOKEN
-//   POST /add-cards/mcp/<token>     MCP (Claude custom connector). <token> is
-//                                   MCP_URL_TOKEN, since the connector form has
-//                                   no auth fields; the secret lives in the URL.
+//   POST /add-cards       REST.  Authorization: Bearer ADD_CARDS_TOKEN
+//   POST /add-cards/mcp   MCP (Claude custom connector, "Request headers").
+//                         Authorization: Bearer MCP_TOKEN
 //
-// Secrets (supabase secrets set): ADD_CARDS_TOKEN, MCP_URL_TOKEN, OWNER_USER_ID.
+// Two different tokens so one can be rotated without touching the other.
+// Secrets (supabase secrets set): ADD_CARDS_TOKEN, MCP_TOKEN, OWNER_USER_ID.
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are injected by Supabase.
 
 const jsonResponse = (body: object | null, status: number) =>
@@ -91,13 +91,17 @@ const runAddCards = async (body: unknown): Promise<Outcome> => {
   };
 };
 
-const handleMcp = async (req: Request, urlToken: string): Promise<Response> => {
-  const expected = Deno.env.get("MCP_URL_TOKEN");
+const bearer = (req: Request): string =>
+  (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+
+const handleMcp = async (req: Request): Promise<Response> => {
+  const expected = Deno.env.get("MCP_TOKEN");
   if (!expected) {
-    console.error("add-cards: MCP_URL_TOKEN is not set");
+    console.error("add-cards: MCP_TOKEN is not set");
     return jsonResponse({ error: "Server configuration error" }, 500);
   }
-  if (!urlToken || !(await tokensMatch(urlToken, expected))) {
+  const given = bearer(req);
+  if (!given || !(await tokensMatch(given, expected))) {
     return jsonResponse({ error: "Unauthorized" }, 401);
   }
 
@@ -131,7 +135,7 @@ const handleRest = async (req: Request): Promise<Response> => {
     return jsonResponse({ error: "Server configuration error" }, 500);
   }
 
-  const given = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const given = bearer(req);
   if (!given || !(await tokensMatch(given, expectedToken))) {
     return jsonResponse({ error: "Unauthorized" }, 401);
   }
@@ -149,6 +153,5 @@ const handleRest = async (req: Request): Promise<Response> => {
 
 Deno.serve((req) => {
   const { pathname } = new URL(req.url);
-  const mcp = pathname.match(/\/mcp(?:\/([^/]*))?\/?$/);
-  return mcp ? handleMcp(req, decodeURIComponent(mcp[1] ?? "")) : handleRest(req);
+  return /\/mcp\/?$/.test(pathname) ? handleMcp(req) : handleRest(req);
 });
