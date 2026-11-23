@@ -1,0 +1,10 @@
+{
+  // Cloudflare Workers static assets deployment (single-page app).
+  // Response headers come from public/_headers, copied into dist/ by Vite.
+  "name": "think-cards",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
