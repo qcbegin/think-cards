@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Copy, Download } from "lucide-react";
 import { Button, Separator, Text } from "@stellar-ui-kit/web";
+import { BUNDLE_FILE, downloadBundle } from "./bundle";
 import { downloadSkillZip, SKILL_NAME } from "./skill";
 
 // The endpoint is public; the token is never shown here (it lives in the
@@ -54,6 +55,26 @@ export const ConnectorGuide = () => {
 
       <Step title={t("connectorStep1Title")}>
         <Text as="p" className="text-sm text-muted">
+          {t("connectorBundleDesc")}
+        </Text>
+
+        <Button
+          type="button"
+          className="w-full sm:w-auto sm:self-start"
+          onClick={() => downloadBundle(CONNECTOR_URL).catch(console.error)}
+        >
+          <Download className="size-4" />
+          {t("connectorDownload", { file: BUNDLE_FILE })}
+        </Button>
+
+        <Text as="p" className="text-sm text-muted">
+          {t("connectorBundleInstall")}
+        </Text>
+
+        <Text as="p" className="pt-2 text-sm font-medium text-foreground">
+          {t("connectorManualTitle")}
+        </Text>
+        <Text as="p" className="text-sm text-muted">
           {t("connectorStep1Desc")}
         </Text>
 
@@ -98,7 +119,7 @@ export const ConnectorGuide = () => {
           onClick={() => downloadSkillZip(CONNECTOR_URL)}
         >
           <Download className="size-4" />
-          {t("connectorSkillDownload", { file: `${SKILL_NAME}.zip` })}
+          {t("connectorDownload", { file: `${SKILL_NAME}.zip` })}
         </Button>
       </Step>
 

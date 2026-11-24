@@ -1,4 +1,5 @@
 import { strToU8, zipSync } from "fflate";
+import { saveFile } from "./bundle";
 
 // A Claude Skill (upload the zip in Claude → Settings → Capabilities → Skills)
 // that teaches Claude how to use the ThinkCards connector. It holds the
@@ -18,9 +19,10 @@ called **ThinkCards** gives you tools to change their deck directly; the app
 picks the changes up on its next sync. Reply to the user in their language
 (usually Chinese).
 
-If the tools are missing, the connector is not added or not enabled in this
-chat. Tell the user to add it once (Settings → Connectors → Add custom
-connector):
+If the tools are missing, the connector is not installed or not enabled in
+this chat. In Claude Desktop the user can install thinkcards.mcpb from the
+app's connector page. Elsewhere, tell them to add it once (Settings →
+Connectors → Add custom connector):
 
 - Name: ThinkCards
 - MCP server URL: ${connectorUrl}
@@ -110,15 +112,5 @@ export const buildSkillZip = (connectorUrl: string): Uint8Array =>
     },
   });
 
-export const downloadSkillZip = (connectorUrl: string): void => {
-  const bytes = buildSkillZip(connectorUrl);
-  const blob = new Blob([bytes as BlobPart], { type: "application/zip" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${SKILL_NAME}.zip`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-};
+export const downloadSkillZip = (connectorUrl: string): void =>
+  saveFile(buildSkillZip(connectorUrl), `${SKILL_NAME}.zip`, "application/zip");

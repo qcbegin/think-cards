@@ -1,0 +1,50 @@
+{
+  "manifest_version": "0.3",
+  "name": "thinkcards",
+  "display_name": "ThinkCards",
+  "version": "1.1.0",
+  "description": "Save, read, edit and tidy flashcards in your self-hosted ThinkCards deck.",
+  "long_description": "Lets Claude add cards, read your decks and cards, rewrite or move cards (keeping review progress), delete cards, and set each deck's card format. Changes show up in ThinkCards after the next sync.",
+  "author": { "name": "ThinkCards" },
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"],
+      "env": {
+        "THINKCARDS_URL": "${user_config.server_url}",
+        "THINKCARDS_TOKEN": "${user_config.token}"
+      }
+    }
+  },
+  "tools": [
+    { "name": "list_decks", "description": "List decks with card counts and formats" },
+    { "name": "list_cards", "description": "Read cards, page by page" },
+    { "name": "add_cards", "description": "Save new cards" },
+    { "name": "update_cards", "description": "Edit or move cards, keeping review progress" },
+    { "name": "delete_cards", "description": "Delete cards" },
+    { "name": "configure_deck", "description": "Create a deck or set its card format" }
+  ],
+  "user_config": {
+    "server_url": {
+      "type": "string",
+      "title": "Server URL",
+      "description": "Your ThinkCards MCP endpoint. Filled in when you download from your ThinkCards app.",
+      "required": true,
+      "default": ""
+    },
+    "token": {
+      "type": "string",
+      "title": "Token",
+      "description": "The MCP_TOKEN secret from your Supabase project.",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": { "node": ">=18.0.0" }
+  },
+  "license": "MIT"
+}
