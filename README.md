@@ -12,7 +12,7 @@ Free, open-source flashcard app with spaced repetition powered by the [FSRS algo
 - **Decks & Subdecks** - Organize cards by subject, chapter, or any structure
 - **Card Types** - Basic (front/back), cloze (fill-in-the-blank), and typing cards
 - **Progress Tracking** - Streaks, study time, card distribution, and daily goals
-- **Multi-Language** - English, Portuguese (BR), Spanish, German, French, Italian, Japanese, Korean, Russian, and Chinese
+- **Interface languages** - English and Chinese
 - **Themes** - Light, dark, and ocean
 
 ## Tech Stack
@@ -74,7 +74,7 @@ src/
   components/    # Reusable UI components
   hooks/         # Custom React hooks
   lib/           # Core libraries (db, supabase, i18n, sync)
-  locales/       # Translation files (10 supported languages)
+  locales/       # Translation files (English and Chinese)
   routes/        # File-based routes (TanStack Router)
   store/         # Zustand stores
   utils/         # Utility functions

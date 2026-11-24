@@ -11,7 +11,6 @@ import { Loader } from "@/components";
 import { db } from "@/lib/db";
 import { useStudySession } from "@/hooks";
 import type { StudyMode } from "@/hooks/useStudySession";
-import { requestOnboardingSurvey } from "@/pages/dashboard/components";
 
 import {
   formatTime,
@@ -103,9 +102,8 @@ const StudySession = ({ deckId, mode }: StudySessionProps) => {
 
   const handleFinish = useCallback(() => {
     saveSession().catch(console.error);
-    if (mode === "scheduled" && answeredCount > 0) requestOnboardingSurvey();
     navigate({ to: "/dashboard" });
-  }, [saveSession, answeredCount, mode, navigate]);
+  }, [saveSession, navigate]);
 
   useEffect(() => {
     if (isDone) return;
