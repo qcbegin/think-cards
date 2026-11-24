@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { requestSync } from "@/lib/sync";
 import { useAuthStore } from "@/store";
 import { getAllDescendantDeckIds } from "@/utils";
-import type { IDeck } from "@/lib/db";
+import type { DeckCardFormat, IDeck } from "@/lib/db";
 
 export type DeckNode = IDeck & { children: DeckNode[] };
 
@@ -81,6 +81,7 @@ export const useCreateDeck = () => {
       parent_id: string | null;
       daily_goal: number;
       language: string | null;
+      card_format: DeckCardFormat | null;
     }) => {
       const userId = useAuthStore.getState().user?.id;
       if (!userId) throw new Error("Not authenticated");
@@ -94,6 +95,7 @@ export const useCreateDeck = () => {
         parent_id: input.parent_id,
         daily_goal: input.daily_goal,
         language: input.language,
+        card_format: input.card_format,
         created_at: now,
         updated_at: now,
         pending_sync: 1,
@@ -126,6 +128,7 @@ export const useUpdateDeck = () => {
       parent_id: string | null;
       daily_goal: number;
       language: string | null;
+      card_format: DeckCardFormat | null;
     }) => {
       const now = new Date().toISOString();
 
@@ -134,6 +137,7 @@ export const useUpdateDeck = () => {
         parent_id: input.parent_id,
         daily_goal: input.daily_goal,
         language: input.language,
+        card_format: input.card_format,
         updated_at: now,
         pending_sync: 1,
       });

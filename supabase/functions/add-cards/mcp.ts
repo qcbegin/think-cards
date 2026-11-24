@@ -1,12 +1,29 @@
-// Minimal stateless MCP server (Streamable HTTP, JSON responses only) exposing
-// one tool: add_cards. Pure TypeScript so it can be unit tested with vitest.
+// Minimal stateless MCP server (Streamable HTTP, JSON responses only) for the
+// ThinkCards deck: list, add, edit and delete cards, and set deck formats.
+// Pure TypeScript so it can be unit tested with vitest.
 
-export const SERVER_INFO = { name: "think-cards", version: "1.0.0" };
+import { FORMAT_RULES, MAX_LIST_LIMIT } from "./logic.ts";
+
+export const SERVER_INFO = { name: "think-cards", version: "1.1.0" };
 export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
 export const INSTRUCTIONS =
-  "Adds English-expression flashcards to the user's ThinkCards deck. " +
-  "Use add_cards only when the user asks to save expressions as cards.";
+  "Manages the user's ThinkCards flashcards. Use add_cards when the user asks to save " +
+  "expressions as cards. To tidy or reformat existing cards: list_decks, then list_cards " +
+  "(page with offset), then update_cards (keeps review progress) or delete_cards. " +
+  "Show the user the planned changes and get a yes before update_cards or delete_cards " +
+  "on more than a few cards. Decks may have a card_format; follow it:\n- " +
+  FORMAT_RULES.produce + "\n- " + FORMAT_RULES.recognize;
+
+const FORMAT_HELP =
+  "Decks can have a card_format (see list_decks). Cards that break it are rejected: " +
+  FORMAT_RULES.produce + " " + FORMAT_RULES.recognize;
+
+const CARD_FORMAT_SCHEMA = {
+  type: "string",
+  enum: ["produce", "recognize", "none"],
+  description: 'Card layout rule for the deck. "none" removes it.',
+};
 
 export const ADD_CARDS_TOOL = {
   name: "add_cards",
@@ -15,13 +32,18 @@ export const ADD_CARDS_TOOL = {
     "Allowed HTML in both fields: p, b, strong, em, br, ul, li (everything else is stripped). " +
     "Cards whose `front` already exists in the deck are skipped, so repeating a call is safe. " +
     "Max 100 cards per call. Use dry_run to check for duplicates without saving. " +
-    "The result says how many cards were added and which were skipped.",
+    "The result says how many cards were added and which were skipped. " +
+    FORMAT_HELP,
   inputSchema: {
     type: "object",
     properties: {
       deck_name: {
         type: "string",
         description: 'Target deck. Created if it does not exist. Defaults to "English expressions".',
+      },
+      deck_format: {
+        ...CARD_FORMAT_SCHEMA,
+        description: "card_format for the deck if this call creates it. Ignored for existing decks.",
       },
       cards: {
         type: "array",
@@ -54,8 +76,135 @@ export const ADD_CARDS_TOOL = {
   },
 };
 
+export const LIST_DECKS_TOOL = {
+  name: "list_decks",
+  description:
+    "List the user's decks with card counts, card_format and speech language. " +
+    "Call this before reorganising cards.",
+  inputSchema: { type: "object", properties: {} },
+  annotations: { title: "List decks", readOnlyHint: true, openWorldHint: false },
+};
+
+export const LIST_CARDS_TOOL = {
+  name: "list_cards",
+  description:
+    "Read cards (id, deck, type, front, back, reps = times reviewed), oldest first. " +
+    `Returns at most ${MAX_LIST_LIMIT} per call; page with offset until next_offset is null. ` +
+    "Use the ids with update_cards or delete_cards.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      deck_name: { type: "string", description: "Only this deck. Omit for all decks." },
+      search: { type: "string", description: "Only cards whose front or back contains this text." },
+      offset: { type: "integer", minimum: 0, description: "Skip this many cards. Default 0." },
+      limit: { type: "integer", minimum: 1, maximum: MAX_LIST_LIMIT, description: "Default 100." },
+    },
+  },
+  annotations: { title: "Read flashcards", readOnlyHint: true, openWorldHint: false },
+};
+
+export const UPDATE_CARDS_TOOL = {
+  name: "update_cards",
+  description:
+    "Edit existing cards in place: rewrite front/back, change type, or move to another deck " +
+    "(the deck must exist; create it with configure_deck). Review progress is kept unless " +
+    "reset_progress is true (use it when the card now asks something different, e.g. front and " +
+    "back swapped). Only the fields you pass change. Max 100 per call. Same HTML rules as " +
+    "add_cards. " + FORMAT_HELP,
+  inputSchema: {
+    type: "object",
+    properties: {
+      updates: {
+        type: "array",
+        minItems: 1,
+        maxItems: 100,
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string", description: "Card id from list_cards." },
+            front: { type: "string" },
+            back: { type: "string" },
+            type: { type: "string", enum: ["basic", "cloze", "typing"] },
+            deck_name: { type: "string", description: "Move the card to this deck." },
+            reset_progress: { type: "boolean", description: "Make the card new again." },
+          },
+          required: ["id"],
+        },
+      },
+    },
+    required: ["updates"],
+  },
+  annotations: {
+    title: "Edit flashcards",
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+};
+
+export const DELETE_CARDS_TOOL = {
+  name: "delete_cards",
+  description:
+    "Delete cards by id (max 100 per call), e.g. duplicates or cards being replaced by " +
+    "add_cards. Prefer update_cards when a card only needs rewriting, since that keeps " +
+    "its review history.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      ids: { type: "array", minItems: 1, maxItems: 100, items: { type: "string" } },
+    },
+    required: ["ids"],
+  },
+  annotations: {
+    title: "Delete flashcards",
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+};
+
+export const CONFIGURE_DECK_TOOL = {
+  name: "configure_deck",
+  description:
+    "Create a deck, or change an existing deck's card_format or speech language. " +
+    "Only the fields you pass change. " + FORMAT_HELP,
+  inputSchema: {
+    type: "object",
+    properties: {
+      deck_name: { type: "string" },
+      card_format: CARD_FORMAT_SCHEMA,
+      language: {
+        type: "string",
+        description: 'Text-to-speech language code, e.g. "en", "pt-PT". "none" turns it off.',
+      },
+    },
+    required: ["deck_name"],
+  },
+  annotations: {
+    title: "Configure deck",
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+};
+
+export const TOOLS = [
+  LIST_DECKS_TOOL,
+  LIST_CARDS_TOOL,
+  ADD_CARDS_TOOL,
+  UPDATE_CARDS_TOOL,
+  DELETE_CARDS_TOOL,
+  CONFIGURE_DECK_TOOL,
+];
+export const TOOL_NAMES = new Set(TOOLS.map((t) => t.name));
+
 export type ToolOutcome = { status: number; body: Record<string, unknown> };
-export type RunTool = (args: unknown) => Promise<ToolOutcome>;
+export type ToolText = { text: string; isError: boolean };
+// Runs one tool by name and returns the text Claude sees.
+export type RunTool = (name: string, args: unknown) => Promise<ToolText>;
 export type McpReply = { status: number; body: unknown | null };
 
 type JsonRpcId = string | number | null;
@@ -132,17 +281,18 @@ const handleOne = async (message: unknown, runTool: RunTool): Promise<unknown | 
     case "ping":
       return rpcResult(id, {});
     case "tools/list":
-      return rpcResult(id, { tools: [ADD_CARDS_TOOL] });
+      return rpcResult(id, { tools: TOOLS });
     case "tools/call": {
-      if (params.name !== ADD_CARDS_TOOL.name) {
-        return rpcError(id, -32602, `Unknown tool: ${String(params.name)}`);
+      const name = String(params.name);
+      if (!TOOL_NAMES.has(name)) {
+        return rpcError(id, -32602, `Unknown tool: ${name}`);
       }
       try {
-        const { text, isError } = formatToolResult(await runTool(params.arguments ?? {}));
+        const { text, isError } = await runTool(name, params.arguments ?? {});
         return rpcResult(id, { content: [{ type: "text", text }], isError });
       } catch {
         return rpcResult(id, {
-          content: [{ type: "text", text: "Error: failed to add cards" }],
+          content: [{ type: "text", text: `Error: ${name} failed` }],
           isError: true,
         });
       }

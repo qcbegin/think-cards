@@ -4,7 +4,7 @@ import {
   useDecksList,
   useUpdateDeck,
 } from "@/hooks";
-import type { IDeck } from "@/lib/db";
+import type { DeckCardFormat, IDeck } from "@/lib/db";
 import { useTranslation } from "react-i18next";
 
 const SPEECH_LANGUAGES = [
@@ -13,7 +13,13 @@ const SPEECH_LANGUAGES = [
   { value: "it", label: "Italiano" },
   { value: "ja", label: "日本語" },
   { value: "fr", label: "Français" },
+  { value: "pt-PT", label: "Português (PT)" },
   { value: "pt-BR", label: "Português (BR)" },
+];
+
+const CARD_FORMATS: { value: DeckCardFormat; labelKey: string }[] = [
+  { value: "produce", labelKey: "deckModalFormatProduce" },
+  { value: "recognize", labelKey: "deckModalFormatRecognize" },
 ];
 
 import {
@@ -59,6 +65,9 @@ export function DeckModal({ deck, open, onOpenChange }: IDeckModalProps) {
   const [language, setLanguage] = useState<string | null>(
     deck?.language ?? null,
   );
+  const [cardFormat, setCardFormat] = useState<DeckCardFormat | null>(
+    deck?.card_format ?? null,
+  );
   const [nameError, setNameError] = useState("");
 
   useEffect(() => {
@@ -67,6 +76,7 @@ export function DeckModal({ deck, open, onOpenChange }: IDeckModalProps) {
       setParentId(deck?.parent_id ?? null);
       setDailyGoal(deck?.daily_goal ?? 20);
       setLanguage(deck?.language ?? null);
+      setCardFormat(deck?.card_format ?? null);
       setNameError("");
     }
   }, [open, deck]);
@@ -77,6 +87,7 @@ export function DeckModal({ deck, open, onOpenChange }: IDeckModalProps) {
       setParentId(null);
       setDailyGoal(20);
       setLanguage(null);
+      setCardFormat(null);
       setNameError("");
     }
     onOpenChange(false);
@@ -96,6 +107,7 @@ export function DeckModal({ deck, open, onOpenChange }: IDeckModalProps) {
           parent_id: parentId,
           daily_goal: dailyGoal,
           language,
+          card_format: cardFormat,
         },
         { onSuccess: handleClose },
       );
@@ -106,6 +118,7 @@ export function DeckModal({ deck, open, onOpenChange }: IDeckModalProps) {
           parent_id: parentId,
           daily_goal: dailyGoal,
           language,
+          card_format: cardFormat,
         },
         { onSuccess: handleClose },
       );
@@ -207,6 +220,40 @@ export function DeckModal({ deck, open, onOpenChange }: IDeckModalProps) {
 
             <Text as="p" className="text-xs text-muted">
               {t("deckModalSpeechLangHint")}
+            </Text>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>{t("deckModalFormatLabel")}</Label>
+            <Select
+              value={cardFormat ?? "none"}
+              onValueChange={(v) =>
+                setCardFormat(v === "none" ? null : (v as DeckCardFormat))
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+
+              <SelectContent>
+                <SelectItem value="none">{t("deckModalFormatNone")}</SelectItem>
+
+                {CARD_FORMATS.map((f) => (
+                  <SelectItem key={f.value} value={f.value}>
+                    {t(f.labelKey)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Text as="p" className="text-xs text-muted">
+              {t(
+                cardFormat === "produce"
+                  ? "deckModalFormatProduceHint"
+                  : cardFormat === "recognize"
+                    ? "deckModalFormatRecognizeHint"
+                    : "deckModalFormatHint",
+              )}
             </Text>
           </div>
         </div>

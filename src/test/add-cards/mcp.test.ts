@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   ADD_CARDS_TOOL,
+  TOOLS,
   formatToolResult,
   handleMcpPayload,
   type McpReply,
@@ -21,10 +22,12 @@ type RpcBody = {
 
 const body = (reply: McpReply) => reply.body as RpcBody;
 
-const okRun = vi.fn(async () => ({
-  status: 200,
-  body: { deck_id: "d", added: 2, skipped: ["dup"], errors: [], dry_run: false },
-}));
+const okRun = vi.fn(async (_name: string, _args: unknown) =>
+  formatToolResult({
+    status: 200,
+    body: { deck_id: "d", added: 2, skipped: ["dup"], errors: [], dry_run: false },
+  }),
+);
 
 const rpc = (method: string, params?: unknown, id: number | null = 1) => ({
   jsonrpc: "2.0",
@@ -53,24 +56,38 @@ describe("handleMcpPayload", () => {
     expect(r).toEqual({ status: 202, body: null });
   });
 
-  it("answers ping and lists exactly one tool", async () => {
+  it("answers ping and lists every tool", async () => {
     expect((await handleMcpPayload(rpc("ping"), okRun)).body).toEqual({ jsonrpc: "2.0", id: 1, result: {} });
     const list = await handleMcpPayload(rpc("tools/list"), okRun);
-    expect(body(list).result.tools).toEqual([ADD_CARDS_TOOL]);
+    expect(body(list).result.tools).toEqual(TOOLS);
+    expect(TOOLS.map((t) => t.name)).toEqual([
+      "list_decks",
+      "list_cards",
+      "add_cards",
+      "update_cards",
+      "delete_cards",
+      "configure_deck",
+    ]);
+    for (const name of ["update_cards", "delete_cards"]) {
+      const annotations = TOOLS.find((t) => t.name === name)?.annotations as { destructiveHint?: boolean };
+      expect(annotations.destructiveHint, name).toBe(true);
+    }
     expect(ADD_CARDS_TOOL.inputSchema.required).toEqual(["cards"]);
   });
 
   it("runs the tool and reports added/skipped in text", async () => {
     const args = { cards: [{ front: "a", back: "b" }] };
     const r = await handleMcpPayload(rpc("tools/call", { name: "add_cards", arguments: args }), okRun);
-    expect(okRun).toHaveBeenCalledWith(args);
+    expect(okRun).toHaveBeenCalledWith("add_cards", args);
     const result = body(r).result;
     expect(result.isError).toBe(false);
     expect(result.content[0].text).toContain("Added 2 card(s), skipped 1 duplicate(s).");
   });
 
   it("flags tool failures with isError instead of a protocol error", async () => {
-    const failing = vi.fn(async () => ({ status: 400, body: { error: "cards must be a non-empty array" } }));
+    const failing = vi.fn(async () =>
+      formatToolResult({ status: 400, body: { error: "cards must be a non-empty array" } }),
+    );
     const r = await handleMcpPayload(rpc("tools/call", { name: "add_cards", arguments: {} }), failing);
     const result = body(r).result;
     expect(result.isError).toBe(true);
@@ -82,6 +99,13 @@ describe("handleMcpPayload", () => {
     const t = await handleMcpPayload(rpc("tools/call", { name: "add_cards", arguments: {} }), throwing);
     expect(body(t).result.isError).toBe(true);
     expect(JSON.stringify(t.body)).not.toContain("secret details");
+  });
+
+  it("routes each tool call by name", async () => {
+    const run = vi.fn(async (name: string) => ({ text: `ran ${name}`, isError: false }));
+    const r = await handleMcpPayload(rpc("tools/call", { name: "list_cards", arguments: { limit: 5 } }), run);
+    expect(run).toHaveBeenCalledWith("list_cards", { limit: 5 });
+    expect(body(r).result.content[0].text).toBe("ran list_cards");
   });
 
   it("rejects unknown tools and methods", async () => {

@@ -49,6 +49,7 @@ describe("deck CRUD", () => {
         parent_id: null,
         daily_goal: 30,
         language: "en",
+        card_format: "produce",
       });
       createdId = created.id;
     });
@@ -66,6 +67,7 @@ describe("deck CRUD", () => {
       name: "Biology",
       daily_goal: 30,
       language: "en",
+      card_format: "produce",
       pending_sync: 1,
       deleted_at: null,
     });
@@ -87,6 +89,7 @@ describe("deck CRUD", () => {
         parent_id: null,
         daily_goal: 40,
         language: "pt-BR",
+        card_format: "recognize",
       });
     });
 
@@ -95,6 +98,7 @@ describe("deck CRUD", () => {
       name: "Updated deck",
       daily_goal: 40,
       language: "pt-BR",
+      card_format: "recognize",
       pending_sync: 1,
     });
     expect(stored?.updated_at).not.toBe(deck.updated_at);

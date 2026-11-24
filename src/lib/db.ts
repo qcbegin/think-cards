@@ -3,6 +3,9 @@ import Dexie, { type EntityTable } from "dexie";
 export type CardType = "basic" | "cloze" | "typing";
 export type Rating = 1 | 2 | 3 | 4;
 export type SyncFlag = 0 | 1;
+// produce: front Chinese -> back foreign expression (learn to say it).
+// recognize: front foreign text -> back Chinese + English explanation.
+export type DeckCardFormat = "produce" | "recognize";
 
 export interface IDeck {
   id: string;
@@ -11,6 +14,8 @@ export interface IDeck {
   parent_id: string | null;
   daily_goal: number;
   language: string | null;
+  // Optional: older local rows synced before this column existed lack it.
+  card_format?: DeckCardFormat | null;
   created_at: string;
   updated_at: string;
   pending_sync: SyncFlag;

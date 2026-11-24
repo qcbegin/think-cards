@@ -12,6 +12,58 @@ export type CardType = (typeof CARD_TYPES)[number];
 const ALLOWED_TAGS = new Set(["p", "b", "strong", "em", "br", "ul", "li"]);
 const CLOZE_RE = /\{\{c\d+::[^}]+\}\}/;
 
+export const CARD_FORMATS = ["produce", "recognize"] as const;
+export type CardFormat = (typeof CARD_FORMATS)[number];
+
+// Shown to Claude (tool descriptions, list_decks) so it writes cards in the
+// layout each deck asks for.
+export const FORMAT_RULES: Record<CardFormat, string> = {
+  produce:
+    "produce (learn to SAY it): front = Chinese only, the situation and meaning " +
+    "(e.g. 确认时间:到时见). back = the expression in the target language, wrapped in " +
+    "<strong>, then a short tone/usage note such as <em>casual</em>.",
+  recognize:
+    "recognize (learn to READ it): front = the foreign text exactly as it appears in " +
+    "daily life (signs, menus, forms, messages); put variants on separate lines with <br>. " +
+    "No Chinese on the front. back = 中文意思, the English meaning, and a short " +
+    "explanation of where you see it and what to do.",
+};
+
+const CJK_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
+const LATIN_RE = /[A-Za-z\u00c0-\u024f]/;
+const stripTags = (html: string): string => html.replace(/<[^>]*>/g, " ");
+
+// Light check that a card follows its deck's format. Cloze cards are free.
+export const checkFormat = (
+  format: CardFormat | null,
+  card: { type: CardType; front: string; back: string },
+): string | null => {
+  if (!format || card.type === "cloze") return null;
+  const front = stripTags(card.front);
+  const back = stripTags(card.back);
+
+  if (format === "produce") {
+    if (!CJK_RE.test(front)) return "produce deck: front must be Chinese";
+    if (!LATIN_RE.test(back)) return "produce deck: back must hold the foreign expression";
+    return null;
+  }
+  if (CJK_RE.test(front)) return "recognize deck: front must be the foreign text, without Chinese";
+  if (!CJK_RE.test(back) || !LATIN_RE.test(back)) {
+    return "recognize deck: back must explain the text in Chinese and English";
+  }
+  return null;
+};
+
+export const parseCardFormat = (
+  value: unknown,
+): { ok: true; format: CardFormat | null } | { ok: false } => {
+  if (value === null || value === "none") return { ok: true, format: null };
+  if (typeof value === "string" && (CARD_FORMATS as readonly string[]).includes(value)) {
+    return { ok: true, format: value as CardFormat };
+  }
+  return { ok: false };
+};
+
 export type NewCard = { type: CardType; front: string; back: string };
 export type CardError = { index: number; message: string };
 
@@ -21,7 +73,11 @@ export type ParsedRequest =
       ok: true;
       deckName: string;
       dryRun: boolean;
+      // Only used if the deck does not exist yet.
+      deckFormat: CardFormat | null;
       cards: NewCard[];
+      // Request index of each entry in `cards`, for error messages.
+      indexes: number[];
       errors: CardError[];
     };
 
@@ -80,6 +136,13 @@ export const parseAddCardsRequest = (body: unknown): ParsedRequest => {
     return { ok: false, status: 400, error: "dry_run must be a boolean" };
   }
 
+  let deckFormat: CardFormat | null = null;
+  if (body.deck_format !== undefined) {
+    const f = parseCardFormat(body.deck_format);
+    if (!f.ok) return { ok: false, status: 400, error: "deck_format must be produce, recognize or none" };
+    deckFormat = f.format;
+  }
+
   if (!Array.isArray(body.cards) || body.cards.length === 0) {
     return { ok: false, status: 400, error: "cards must be a non-empty array" };
   }
@@ -89,6 +152,7 @@ export const parseAddCardsRequest = (body: unknown): ParsedRequest => {
   }
 
   const cards: NewCard[] = [];
+  const indexes: number[] = [];
   const errors: CardError[] = [];
 
   body.cards.forEach((raw: unknown, index: number) => {
@@ -128,6 +192,7 @@ export const parseAddCardsRequest = (body: unknown): ParsedRequest => {
         return;
       }
       cards.push({ type, front, back: "" });
+      indexes.push(index);
       return;
     }
 
@@ -138,13 +203,216 @@ export const parseAddCardsRequest = (body: unknown): ParsedRequest => {
     }
 
     cards.push({ type: type as CardType, front, back });
+    indexes.push(index);
   });
 
   return {
     ok: true,
     deckName,
     dryRun: body.dry_run === true,
+    deckFormat,
     cards,
+    indexes,
     errors,
   };
+};
+
+// Move cards that break the deck format into errors.
+export const applyFormat = (
+  parsed: { cards: NewCard[]; indexes: number[]; errors: CardError[] },
+  format: CardFormat | null,
+): { cards: NewCard[]; indexes: number[]; errors: CardError[] } => {
+  const cards: NewCard[] = [];
+  const indexes: number[] = [];
+  const errors = [...parsed.errors];
+  parsed.cards.forEach((card, i) => {
+    const problem = checkFormat(format, card);
+    if (problem) errors.push({ index: parsed.indexes[i], message: problem });
+    else {
+      cards.push(card);
+      indexes.push(parsed.indexes[i]);
+    }
+  });
+  errors.sort((a, b) => a.index - b.index);
+  return { cards, indexes, errors };
+};
+
+// ---------------------------------------------------------------------------
+// list_cards / update_cards / delete_cards / configure_deck
+// ---------------------------------------------------------------------------
+
+export const MAX_LIST_LIMIT = 200;
+export const DEFAULT_LIST_LIMIT = 100;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const isUuid = (value: unknown): value is string =>
+  typeof value === "string" && UUID_RE.test(value);
+
+type Fail = { ok: false; status: number; error: string };
+const fail = (error: string): Fail => ({ ok: false, status: 400, error });
+
+const optionalDeckName = (value: unknown): { ok: true; name: string | null } | Fail => {
+  if (value === undefined || value === null) return { ok: true, name: null };
+  if (typeof value !== "string" || !value.trim()) return fail("deck_name must be a non-empty string");
+  if (value.trim().length > MAX_DECK_NAME_LENGTH) return fail("deck_name is too long");
+  return { ok: true, name: value.trim() };
+};
+
+export type ListCardsRequest = {
+  ok: true;
+  deckName: string | null;
+  search: string | null;
+  offset: number;
+  limit: number;
+};
+
+export const parseListCardsRequest = (body: unknown): ListCardsRequest | Fail => {
+  const b = isRecord(body) ? body : {};
+  const deck = optionalDeckName(b.deck_name);
+  if (!deck.ok) return deck;
+
+  const offset = b.offset ?? 0;
+  if (!Number.isInteger(offset) || (offset as number) < 0) return fail("offset must be a non-negative integer");
+  const limit = b.limit ?? DEFAULT_LIST_LIMIT;
+  if (!Number.isInteger(limit) || (limit as number) < 1 || (limit as number) > MAX_LIST_LIMIT) {
+    return fail(`limit must be between 1 and ${MAX_LIST_LIMIT}`);
+  }
+
+  let search: string | null = null;
+  if (b.search !== undefined && b.search !== null) {
+    if (typeof b.search !== "string") return fail("search must be a string");
+    search = b.search.trim() || null;
+  }
+
+  return { ok: true, deckName: deck.name, search, offset: offset as number, limit: limit as number };
+};
+
+export type CardEdit = {
+  id: string;
+  front?: string;
+  back?: string;
+  type?: CardType;
+  deckName?: string;
+  resetProgress: boolean;
+};
+export type EditError = { id: string; message: string };
+
+export type UpdateCardsRequest = { ok: true; edits: CardEdit[]; errors: EditError[] };
+
+export const parseUpdateCardsRequest = (body: unknown): UpdateCardsRequest | Fail => {
+  if (!isRecord(body)) return fail("Body must be a JSON object");
+  if (!Array.isArray(body.updates) || body.updates.length === 0) {
+    return fail("updates must be a non-empty array");
+  }
+  if (body.updates.length > MAX_CARDS) return fail(`At most ${MAX_CARDS} updates per request`);
+
+  const edits: CardEdit[] = [];
+  const errors: EditError[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of body.updates as unknown[]) {
+    if (!isRecord(raw) || !isUuid(raw.id)) {
+      errors.push({ id: isRecord(raw) ? String(raw.id) : "?", message: "id must be a card id" });
+      continue;
+    }
+    const id = raw.id.toLowerCase();
+    if (seen.has(id)) {
+      errors.push({ id, message: "card listed twice" });
+      continue;
+    }
+    seen.add(id);
+
+    const edit: CardEdit = { id, resetProgress: raw.reset_progress === true };
+    let bad: string | null = null;
+
+    for (const field of ["front", "back"] as const) {
+      const v = raw[field];
+      if (v === undefined) continue;
+      if (typeof v !== "string") bad = `${field} must be a string`;
+      else if (v.length > MAX_FIELD_LENGTH) bad = "Field is too long";
+      else edit[field] = sanitizeHtml(v);
+    }
+    if (raw.type !== undefined) {
+      if (typeof raw.type !== "string" || !(CARD_TYPES as readonly string[]).includes(raw.type)) bad = "Invalid type";
+      else edit.type = raw.type as CardType;
+    }
+    if (raw.deck_name !== undefined) {
+      const deck = optionalDeckName(raw.deck_name);
+      if (!deck.ok) bad = deck.error;
+      else if (deck.name) edit.deckName = deck.name;
+    }
+    if (raw.reset_progress !== undefined && typeof raw.reset_progress !== "boolean") {
+      bad = "reset_progress must be a boolean";
+    }
+    if (!bad && edit.front === undefined && edit.back === undefined && !edit.type && !edit.deckName && !edit.resetProgress) {
+      bad = "nothing to change";
+    }
+
+    if (bad) errors.push({ id, message: bad });
+    else edits.push(edit);
+  }
+
+  return { ok: true, edits, errors };
+};
+
+export type ExistingCard = { id: string; deck_id: string; type: CardType; front: string; back: string };
+export type ResolvedEdit = ExistingCard & { reset_progress: boolean };
+
+// Merge an edit into the stored card and check the result like a new card.
+export const resolveEdit = (
+  edit: CardEdit,
+  current: ExistingCard,
+  target: { id: string; card_format: CardFormat | null },
+): { ok: true; row: ResolvedEdit } | { ok: false; message: string } => {
+  const type = edit.type ?? current.type;
+  const front = edit.front ?? current.front;
+  const back = type === "cloze" ? "" : (edit.back ?? current.back);
+
+  if (!front) return { ok: false, message: "front is empty" };
+  if (type === "cloze" && !CLOZE_RE.test(front)) return { ok: false, message: "Cloze front needs {{c1::...}}" };
+  if (type !== "cloze" && !back) return { ok: false, message: "back is empty" };
+
+  const problem = checkFormat(target.card_format, { type, front, back });
+  if (problem) return { ok: false, message: problem };
+
+  return {
+    ok: true,
+    row: { id: current.id, deck_id: target.id, type, front, back, reset_progress: edit.resetProgress },
+  };
+};
+
+export const parseDeleteCardsRequest = (body: unknown): { ok: true; ids: string[] } | Fail => {
+  if (!isRecord(body) || !Array.isArray(body.ids) || body.ids.length === 0) {
+    return fail("ids must be a non-empty array");
+  }
+  if (body.ids.length > MAX_CARDS) return fail(`At most ${MAX_CARDS} ids per request`);
+  if (!body.ids.every(isUuid)) return fail("every id must be a card id");
+  return { ok: true, ids: [...new Set((body.ids as string[]).map((id) => id.toLowerCase()))] };
+};
+
+export type ConfigureDeckRequest = {
+  ok: true;
+  deckName: string;
+  changes: { card_format?: CardFormat | null; language?: string | null };
+};
+
+export const parseConfigureDeckRequest = (body: unknown): ConfigureDeckRequest | Fail => {
+  if (!isRecord(body)) return fail("Body must be a JSON object");
+  const deck = optionalDeckName(body.deck_name);
+  if (!deck.ok) return deck;
+  if (!deck.name) return fail("deck_name is required");
+
+  const changes: ConfigureDeckRequest["changes"] = {};
+  if (body.card_format !== undefined) {
+    const f = parseCardFormat(body.card_format);
+    if (!f.ok) return fail("card_format must be produce, recognize or none");
+    changes.card_format = f.format;
+  }
+  if (body.language !== undefined) {
+    if (body.language === null || body.language === "none") changes.language = null;
+    else if (typeof body.language !== "string" || !/^[a-z]{2,3}(-[A-Za-z]{2,4})?$/.test(body.language)) {
+      return fail('language must be a code like "en" or "pt-PT"');
+    } else changes.language = body.language;
+  }
+
+  return { ok: true, deckName: deck.name, changes };
 };

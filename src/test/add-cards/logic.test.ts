@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_DECK_NAME,
   MAX_CARDS,
+  applyFormat,
+  checkFormat,
   parseAddCardsRequest,
+  parseConfigureDeckRequest,
+  parseDeleteCardsRequest,
+  parseListCardsRequest,
+  parseUpdateCardsRequest,
+  resolveEdit,
   sanitizeHtml,
 } from "../../../supabase/functions/add-cards/logic";
 
@@ -117,5 +124,114 @@ describe("parseAddCardsRequest", () => {
     const r = ok({ cards: [{ front: "a".repeat(5001), back: "b" }] });
     expect(r.cards).toHaveLength(0);
     expect(r.errors).toHaveLength(1);
+  });
+});
+
+describe("card formats", () => {
+  it("checks produce and recognize layouts, and leaves cloze and unformatted decks alone", () => {
+    const produce = { type: "basic" as const, front: "确认时间:到时见", back: "<strong>See you then!</strong>" };
+    expect(checkFormat("produce", produce)).toBeNull();
+    expect(checkFormat("produce", { ...produce, front: "See you then!", back: "到时见" })).toMatch(/front must be Chinese/);
+
+    const recognize = { type: "basic" as const, front: "Saída", back: "出口<br>Exit — 商场、地铁里常见" };
+    expect(checkFormat("recognize", recognize)).toBeNull();
+    expect(checkFormat("recognize", { ...recognize, back: "Exit" })).toMatch(/Chinese and English/);
+    expect(checkFormat("recognize", { ...recognize, front: "出口 Saída" })).toMatch(/without Chinese/);
+
+    expect(checkFormat(null, { ...produce, front: "x" })).toBeNull();
+    expect(checkFormat("produce", { type: "cloze", front: "{{c1::a}}", back: "" })).toBeNull();
+  });
+
+  it("parses deck_format and moves cards that break it into errors with their request index", () => {
+    const parsed = parseAddCardsRequest({
+      deck_format: "produce",
+      cards: [
+        { front: "", back: "x" },
+        { front: "See you", back: "到时见" },
+        { front: "到时见", back: "See you then!" },
+      ],
+    });
+    if (!parsed.ok) throw new Error("expected ok");
+    expect(parsed.deckFormat).toBe("produce");
+    expect(parsed.indexes).toEqual([1, 2]);
+
+    const applied = applyFormat(parsed, "produce");
+    expect(applied.cards.map((c) => c.front)).toEqual(["到时见"]);
+    expect(applied.indexes).toEqual([2]);
+    expect(applied.errors.map((e) => e.index)).toEqual([0, 1]);
+
+    expect(parseAddCardsRequest({ deck_format: "bogus", cards: [{ front: "a", back: "b" }] }).ok).toBe(false);
+  });
+});
+
+describe("edit requests", () => {
+  const id = "0b0e7c1a-3c1e-4a51-9d0e-6f7e3c2a1b00";
+  const other = "1b0e7c1a-3c1e-4a51-9d0e-6f7e3c2a1b00";
+
+  it("parses list_cards paging", () => {
+    expect(parseListCardsRequest({})).toMatchObject({ ok: true, offset: 0, limit: 100, deckName: null });
+    expect(parseListCardsRequest({ limit: 500 }).ok).toBe(false);
+    expect(parseListCardsRequest({ offset: -1 }).ok).toBe(false);
+    expect(parseListCardsRequest({ search: "  hi " })).toMatchObject({ search: "hi" });
+  });
+
+  it("parses update_cards, sanitising and reporting bad items", () => {
+    const r = parseUpdateCardsRequest({
+      updates: [
+        { id, front: "<a href=x>到时见</a>", reset_progress: true },
+        { id },
+        { id: "nope", front: "x" },
+        { id, back: "dup" },
+      ],
+    });
+    if (!r.ok) throw new Error("expected ok");
+    expect(r.edits).toEqual([{ id, front: "到时见", resetProgress: true }]);
+    expect(r.errors.map((e) => e.message)).toEqual([
+      "card listed twice",
+      "id must be a card id",
+      "card listed twice",
+    ]);
+    expect(parseUpdateCardsRequest({ updates: [] }).ok).toBe(false);
+  });
+
+  it("flags an edit with nothing to change", () => {
+    const r = parseUpdateCardsRequest({ updates: [{ id: other }] });
+    if (!r.ok) throw new Error("expected ok");
+    expect(r.errors).toEqual([{ id: other, message: "nothing to change" }]);
+  });
+
+  it("merges edits and checks the target deck's format", () => {
+    const card = { id, deck_id: "d1", type: "basic" as const, front: "See you then!", back: "到时见" };
+    const swapped = resolveEdit(
+      { id, front: "到时见", back: "<strong>See you then!</strong>", resetProgress: true },
+      card,
+      { id: "d1", card_format: "produce" },
+    );
+    expect(swapped).toEqual({
+      ok: true,
+      row: { ...card, front: "到时见", back: "<strong>See you then!</strong>", reset_progress: true },
+    });
+
+    const moved = resolveEdit({ id, deckName: "PT", resetProgress: false }, card, { id: "d2", card_format: "produce" });
+    expect(moved).toEqual({ ok: false, message: "produce deck: front must be Chinese" });
+
+    const toCloze = resolveEdit({ id, type: "cloze", resetProgress: false }, card, { id: "d1", card_format: null });
+    expect(toCloze).toEqual({ ok: false, message: "Cloze front needs {{c1::...}}" });
+  });
+
+  it("parses delete_cards and configure_deck", () => {
+    expect(parseDeleteCardsRequest({ ids: [id, id.toUpperCase()] })).toEqual({ ok: true, ids: [id] });
+    expect(parseDeleteCardsRequest({ ids: ["x"] }).ok).toBe(false);
+
+    expect(parseConfigureDeckRequest({ deck_name: "PT", card_format: "recognize", language: "pt-PT" })).toEqual({
+      ok: true,
+      deckName: "PT",
+      changes: { card_format: "recognize", language: "pt-PT" },
+    });
+    expect(parseConfigureDeckRequest({ deck_name: "PT", card_format: "none", language: "none" })).toMatchObject({
+      changes: { card_format: null, language: null },
+    });
+    expect(parseConfigureDeckRequest({ card_format: "produce" }).ok).toBe(false);
+    expect(parseConfigureDeckRequest({ deck_name: "PT", language: "Portuguese" }).ok).toBe(false);
   });
 });
